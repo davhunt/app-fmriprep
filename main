@@ -322,9 +322,11 @@ if [ $fieldmap_path != "null" ]; then
     fi
 
     #convert tmp file to real file
-    for file in ${name_FMAP}*.tmp; do
-        mv $file ${file%.tmp}
-    done
+    if ls ${name_FMAP}*.tmp 1> /dev/null 2>&1; then
+      for file in ${name_FMAP}*.tmp; do
+          mv $file ${file%.tmp}
+      done
+    fi
 
     echo "fmap bids dir"
     ls -la $fmap_bids_dir
