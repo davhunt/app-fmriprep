@@ -120,6 +120,7 @@ if [[ $inFSDIR != "null" ]] ; then
 		cp -r $inFSDIR $outdir/freesurfer/$bidsSub
 	fi
 fi
+ls -lat $outdir/freesurfer/$bidsSub
 
 ################################################################################
 # make this for bids spec
