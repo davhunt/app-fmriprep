@@ -112,13 +112,8 @@ mkdir -p $bidsSubSesDir
 if [[ $inFSDIR != "null" ]] ; then
 
 	mkdir -p $outdir/freesurfer
-
-	# dont know if dir will be just inFSDIR or inFSDIR/output
-	if [[ -d $inFSDIR/output ]] ; then
-		cp -r $inFSDIR/output $outdir/freesurfer/$bidsSub
-	else
-		cp -r $inFSDIR $outdir/freesurfer/$bidsSub
-	fi
+    cp -r $inFSDIR $outdir/freesurfer/$bidsSub
+    chmod -R +rw $outdir/freesurfer
 fi
 
 ################################################################################
@@ -152,17 +147,53 @@ fi
 
 ################################################################################
 # FMRI
+#if [[ $inFMRI != "null" ]] ; then
+#	mkdir -p $bidsSubSesDir/func
+#	jq '._inputs[] | select(.id == "fmri")' config.json > fmri.json
+#
+#	# fmriprep needs task in the filename to be defined!
+#    # let's use task, TaskName, and if neither is set, set it to unknown
+#    task=$(jq .meta.task fmri.json)
+#    if [ "$task" == null ]; then
+#        task=$(jq .meta.TaskName fmri.json)
+#        if [ "$task" == null ]; then
+#            task="unknown"
+#        fi
+#    fi
+#
+#    #temporarily removing datataype field from meta as we used to copy all nifti headers
+#    #into meta and it was colliding with BIDS datatype field
+#	name_FMRI=$bidsSubSesDir/func/$bidsSub
+#	jq '.meta | del(.["datatype"])' fmri.json | jq ".task = \"$task\"" > ${name_FMRI}_bold.json
+#    echo "Wrote to ${name_FMRI}_bold.json"
+#
+#	name_FMRI=$(bids_namekeyvals $name_FMRI ${name_FMRI}_bold.json "task acq ce dir rec run echo" $ses )
+#	cp $inFMRI ${name_FMRI}_bold.nii.gz
+#
+#	bids_phaseencode_check ${name_FMRI}_bold.json 
+#fi
+
 if [[ $inFMRI != "null" ]] ; then
 	mkdir -p $bidsSubSesDir/func
-	jq '._inputs[] | select(.id == "fmri")' config.json > fmri.json
+	jq '._inputs[] | select(.id == "fmri")' config.json > fmri.prep.json
+
 	# fmri needs task in the filename to be defined!
+    task=$(jq -r .meta.task fmri.prep.json)
+    if [ "$task" == null ]; then
+        task=$(jq -r .meta.TaskName fmri.prep.json)
+        if [ "$task" == null ]; then
+            task="unknown"
+        fi
+    fi
+    cat fmri.prep.json | jq ".meta.task = \"$task\"" > fmri.json
+
 	name_FMRI=$bidsSubSesDir/func/$bidsSub
 	name_FMRI=$(bids_namekeyvals $name_FMRI fmri.json "task acq ce dir rec run echo" $ses )
 	cp $inFMRI ${name_FMRI}_bold.nii.gz
-	jq -r ".meta" fmri.json > ${name_FMRI}_bold.json
-	bids_phaseencode_check ${name_FMRI}_bold.json 
-
+	jq -r '.meta | del(.["datatype"])' fmri.json > ${name_FMRI}_bold.json
+	bids_phaseencode_check ${name_FMRI}_bold.json
 fi
+
 ################################################################################
 #
 # FMAP
@@ -405,7 +436,7 @@ export SINGULARITYENV_TEMPLATEFLOW_HOME=$PWD/templateflow
 echo $FREESURFER_LICENSE > license.txt
 
 time singularity exec -e \
-    docker://poldracklab/fmriprep:1.5.5 \
+    docker://poldracklab/fmriprep:1.5.10 \
     /usr/local/miniconda/bin/fmriprep \
     --notrack \
     --resource-monitor \
@@ -421,12 +452,6 @@ time singularity exec -e \
     --work-dir=$WORKDIRNAME \
     --participant_label="$bidsSub" \
     $bidsDir $outdir participant
-
-#--fs-no-reconall \
-#--fs-subjects-dir="$outdir/freesurfer/$bidsSub" \
-#--fs-subjects-dir="$outdir/freesurfer" \
-#--output-spaces $output_space MNI152NLin2009cAsym \
-#-B $(pwd)/base.py:/usr/local/miniconda/lib/python3.7/site-packages/fmriprep/workflows/bold/base.py \
 
 echo "done with fmriprep! - now organizing output"
 
@@ -518,6 +543,7 @@ for dir in $(cd $outdir && find ./ -name figures); do
     mkdir -p output_report/$(dirname $dir)
     cp -r $outdir/$dir output_report/$(dirname $dir)
 done
+mv output_report/fmriprep output_report/html #rename the parent directory to confirm to brainlife html output
 
 cat << EOF > product.json
 {
